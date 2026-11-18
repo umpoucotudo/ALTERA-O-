@@ -1,0 +1,486 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="theme-color" content="#0f172a">
+  <title>Comparador de Preços - Promoções</title>
+  <link rel="manifest" href="manifest.json">
+  <!-- Importando biblioteca para gerar PDF diretamente no navegador -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/pdfmake/0.2.7/pdfmake.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/pdfmake/0.2.7/vfs_fonts.js"></script>
+  <style>
+    :root {
+      --bg: #f8fafc;
+      --card: #ffffff;
+      --primary: #0f172a;
+      --accent: #2563eb;
+      --green-bg: #dcfce7;
+      --green-text: #166534;
+      --red-bg: #fee2e2;
+      --red-text: #991b1b;
+      --gray-bg: #f1f5f9;
+      --gray-text: #475569;
+      --blue-bg: #dbeafe;
+      --blue-text: #1e40af;
+    }
+
+    * { box-sizing: border-box; font-family: system-ui, -apple-system, sans-serif; }
+    body { margin: 0; background: var(--bg); color: #1e293b; padding: 16px; }
+    .container { max-width: 1250px; margin: 0 auto; }
+
+    header {
+      background: var(--primary);
+      color: white;
+      padding: 20px;
+      border-radius: 12px;
+      margin-bottom: 20px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 10px;
+    }
+    header h1 { margin: 0; font-size: 1.4rem; }
+
+    .upload-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+      gap: 16px;
+      margin-bottom: 20px;
+    }
+
+    .upload-card {
+      background: var(--card);
+      padding: 20px;
+      border-radius: 12px;
+      border: 2px dashed #cbd5e1;
+      text-align: center;
+      transition: border-color 0.2s;
+    }
+    .upload-card.loaded { border-color: #22c55e; background: #f0fdf4; }
+    .upload-card label { display: block; font-weight: 600; margin-bottom: 10px; cursor: pointer; }
+    input[type="file"] { width: 100%; }
+
+    .actions {
+      display: flex;
+      gap: 12px;
+      flex-wrap: wrap;
+      margin-bottom: 20px;
+      align-items: center;
+    }
+
+    button {
+      background: var(--accent);
+      color: white;
+      border: none;
+      padding: 12px 20px;
+      border-radius: 8px;
+      font-weight: 600;
+      cursor: pointer;
+      font-size: 0.95rem;
+    }
+    button:disabled { background: #94a3b8; cursor: not-allowed; }
+    button.secondary { background: #334155; }
+    button.pdf-btn { background: #dc2626; }
+
+    .summary-cards {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+      gap: 12px;
+      margin-bottom: 20px;
+    }
+    .stat-card {
+      background: var(--card);
+      padding: 16px;
+      border-radius: 10px;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.08);
+      cursor: pointer;
+      border: 2px solid transparent;
+    }
+    .stat-card.active { border-color: var(--accent); }
+    .stat-card h3 { margin: 0; font-size: 0.85rem; color: #64748b; }
+    .stat-card p { margin: 8px 0 0; font-size: 1.6rem; font-weight: 700; }
+
+    .search-bar {
+      width: 100%;
+      padding: 12px;
+      border: 1px solid #cbd5e1;
+      border-radius: 8px;
+      margin-bottom: 16px;
+      font-size: 1rem;
+    }
+
+    .table-wrapper {
+      background: var(--card);
+      border-radius: 12px;
+      overflow-x: auto;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.08);
+    }
+    table { width: 100%; border-collapse: collapse; font-size: 0.9rem; }
+    th, td { padding: 12px; text-align: left; border-bottom: 1px solid #e2e8f0; white-space: nowrap; }
+    th { background: #f1f5f9; font-weight: 600; color: #334155; }
+    td.desc { white-space: normal; min-width: 240px; }
+
+    .badge {
+      padding: 4px 10px;
+      border-radius: 999px;
+      font-weight: 600;
+      font-size: 0.8rem;
+      display: inline-block;
+    }
+    .badge.barato { background: var(--green-bg); color: var(--green-text); }
+    .badge.caro { background: var(--red-bg); color: var(--red-text); }
+    .badge.igual { background: var(--gray-bg); color: var(--gray-text); }
+    .badge.novo { background: var(--blue-bg); color: var(--blue-text); }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <header>
+      <h1>Comparador de Preços (SerieD.025)</h1>
+      <button id="btnInstall" style="display:none; background:#22c55e;">Instalar App</button>
+    </header>
+
+    <div class="upload-grid">
+      <div class="upload-card" id="cardOld">
+        <label for="fileOld">1. Arquivo Anterior (Término)</label>
+        <input type="file" id="fileOld" accept=".txt">
+        <small id="infoOld">Nenhum arquivo selecionado</small>
+      </div>
+      <div class="upload-card" id="cardNew">
+        <label for="fileNew">2. Arquivo Atual (Começo)</label>
+        <input type="file" id="fileNew" accept=".txt">
+        <small id="infoNew">Nenhum arquivo selecionado</small>
+      </div>
+    </div>
+
+    <div class="actions">
+      <button id="btnCompare" disabled>Analisar Alterações</button>
+      <button id="btnExport" class="secondary" disabled>Exportar CSV (Excel)</button>
+      <button id="btnPdf" class="pdf-btn" disabled>Gerar PDF de Alterações</button>
+    </div>
+
+    <div id="resultsSection" style="display:none;">
+      <div class="summary-cards">
+        <div class="stat-card" data-filter="TODOS">
+          <h3>Total Analisado</h3>
+          <p id="countAll">0</p>
+        </div>
+        <div class="stat-card" data-filter="BARATO" style="color: var(--green-text);">
+          <h3>Mais Baratos ↓</h3>
+          <p id="countCheap">0</p>
+        </div>
+        <div class="stat-card" data-filter="CARO" style="color: var(--red-text);">
+          <h3>Mais Caros ↑</h3>
+          <p id="countExpensive">0</p>
+        </div>
+        <div class="stat-card" data-filter="IGUAL">
+          <h3>Mesmo Valor =</h3>
+          <p id="countSame">0</p>
+        </div>
+        <div class="stat-card active" data-filter="ALTERADOS" style="color: var(--accent);">
+          <h3>Alterações (Geral)</h3>
+          <p id="countChanged">0</p>
+        </div>
+      </div>
+
+      <input type="text" id="searchInput" class="search-bar" placeholder="Buscar por N.C.E, Cód. Promoção, Grupo ou Descrição...">
+
+      <div class="table-wrapper">
+        <table>
+          <thead>
+            <tr>
+              <th>Status</th>
+              <th>Cód. Promoção</th>
+              <th>Grupo</th>
+              <th>N.C.E</th>
+              <th>Descrição do Produto</th>
+              <th>Data Inicial</th>
+              <th>Data Final</th>
+              <th>Qt. Saldo</th>
+              <th>Preço Anterior</th>
+              <th>Preço Atual</th>
+              <th>Diferença</th>
+            </tr>
+          </thead>
+          <tbody id="tableBody"></tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    let oldData = new Map();
+    let newData = new Map();
+    let comparisonResults = [];
+    let currentFilter = 'ALTERADOS';
+
+    // Regex rigorosa para separar o relatório SerieD.025
+    const lineRegex = /^\s*(\S+)\s+(\d+)\s+(\d+)\s+(.+?)\s+(\d{2}\.\d{2}\.\d{2,4})\s+(\d{2}\.\d{2}\.\d{2,4})\s+([\d.,]+)\s+([\d.,]+)\s+([\d.,]+)/;
+
+    // Padrão numérico do ERP: vírgula separa milhar e ponto separa centavos (ex: 2,899.00 ou 20.00)
+    function parseCurrency(str) {
+      if (!str) return 0;
+      const clean = str.replace(/,/g, '').trim();
+      return parseFloat(clean) || 0;
+    }
+
+    function formatCurrency(val) {
+      if (val === null || val === undefined) return '-';
+      return val.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+    }
+
+    function parseReportText(text) {
+      const map = new Map();
+      const lines = text.split(/\r?\n/);
+
+      for (const line of lines) {
+        const match = line.match(lineRegex);
+        if (match) {
+          const item = {
+            codPromocao: match[1],
+            grupo: match[2],
+            nce: match[3],
+            descricao: match[4].trim(),
+            dataInicial: match[5],
+            dataFinal: match[6],
+            saldo: match[7],
+            normal: parseCurrency(match[8]),
+            promocao: parseCurrency(match[9])
+          };
+
+          if (!map.has(item.nce) || item.promocao < map.get(item.nce).promocao) {
+            map.set(item.nce, item);
+          }
+        }
+      }
+      return map;
+    }
+
+    function handleFileUpload(input, targetMap, cardId, infoId) {
+      const file = input.files[0];
+      if (!file) return;
+
+      const reader = new FileReader();
+      reader.onload = (e) => {
+        const parsed = parseReportText(e.target.result);
+        targetMap.clear();
+        parsed.forEach((v, k) => targetMap.set(k, v));
+
+        document.getElementById(cardId).classList.add('loaded');
+        document.getElementById(infoId).textContent = `${file.name} (${targetMap.size} produtos únicos)`;
+        document.getElementById('btnCompare').disabled = !(oldData.size > 0 && newData.size > 0);
+      };
+      reader.readAsText(file, 'ISO-8859-1');
+    }
+
+    document.getElementById('fileOld').addEventListener('change', (e) => handleFileUpload(e.target, oldData, 'cardOld', 'infoOld'));
+    document.getElementById('fileNew').addEventListener('change', (e) => handleFileUpload(e.target, newData, 'cardNew', 'infoNew'));
+
+    document.getElementById('btnCompare').addEventListener('click', () => {
+      comparisonResults = [];
+      let cheap = 0, expensive = 0, same = 0, added = 0;
+
+      newData.forEach((curr, nce) => {
+        const prev = oldData.get(nce);
+        let status = 'NOVO';
+        let diff = 0;
+        let oldPrice = null;
+
+        if (prev) {
+          oldPrice = prev.promocao;
+          diff = curr.promocao - oldPrice;
+          if (diff < -0.009) {
+            status = 'BARATO';
+            cheap++;
+          } else if (diff > 0.009) {
+            status = 'CARO';
+            expensive++;
+          } else {
+            status = 'IGUAL';
+            same++;
+          }
+        } else {
+          added++;
+        }
+
+        comparisonResults.push({
+          ...curr,
+          oldPrice,
+          diff,
+          status
+        });
+      });
+
+      const totalChanged = cheap + expensive + added;
+
+      document.getElementById('countAll').textContent = comparisonResults.length;
+      document.getElementById('countCheap').textContent = cheap;
+      document.getElementById('countExpensive').textContent = expensive;
+      document.getElementById('countSame').textContent = same;
+      document.getElementById('countChanged').textContent = totalChanged;
+
+      document.getElementById('resultsSection').style.display = 'block';
+      document.getElementById('btnExport').disabled = false;
+      document.getElementById('btnPdf').disabled = false;
+      renderTable();
+    });
+
+    function renderTable() {
+      const query = document.getElementById('searchInput').value.toLowerCase();
+      const tbody = document.getElementById('tableBody');
+      tbody.innerHTML = '';
+
+      const filtered = comparisonResults.filter(item => {
+        let matchFilter = true;
+        if (currentFilter === 'ALTERADOS') {
+          matchFilter = item.status !== 'IGUAL';
+        } else if (currentFilter !== 'TODOS') {
+          matchFilter = item.status === currentFilter;
+        }
+
+        const matchSearch = item.nce.toLowerCase().includes(query) ||
+                            item.codPromocao.toLowerCase().includes(query) ||
+                            item.grupo.toLowerCase().includes(query) ||
+                            item.descricao.toLowerCase().includes(query);
+        return matchFilter && matchSearch;
+      });
+
+      for (const item of filtered) {
+        const tr = document.createElement('tr');
+        let badgeHtml = '';
+        let diffStr = '-';
+
+        if (item.status === 'BARATO') {
+          badgeHtml = '<span class="badge barato">MAIS BARATO ↓</span>';
+          diffStr = `<span style="color:var(--green-text);font-weight:bold;">${formatCurrency(item.diff)}</span>`;
+        } else if (item.status === 'CARO') {
+          badgeHtml = '<span class="badge caro">MAIS CARO ↑</span>';
+          diffStr = `<span style="color:var(--red-text);font-weight:bold;">+${formatCurrency(item.diff)}</span>`;
+        } else if (item.status === 'IGUAL') {
+          badgeHtml = '<span class="badge igual">MESMO VALOR =</span>';
+          diffStr = 'R$ 0,00';
+        } else {
+          badgeHtml = '<span class="badge novo">NOVO NA LISTA</span>';
+        }
+
+        tr.innerHTML = `
+          <td>${badgeHtml}</td>
+          <td><code>${item.codPromocao}</code></td>
+          <td>${item.grupo}</td>
+          <td><strong>${item.nce}</strong></td>
+          <td class="desc">${item.descricao}</td>
+          <td>${item.dataInicial}</td>
+          <td>${item.dataFinal}</td>
+          <td>${item.saldo}</td>
+          <td>${formatCurrency(item.oldPrice)}</td>
+          <td><strong>${formatCurrency(item.promocao)}</strong></td>
+          <td>${diffStr}</td>
+        `;
+        tbody.appendChild(tr);
+      }
+    }
+
+    document.querySelectorAll('.stat-card').forEach(card => {
+      card.addEventListener('click', () => {
+        document.querySelectorAll('.stat-card').forEach(c => c.classList.remove('active'));
+        card.classList.add('active');
+        currentFilter = card.dataset.filter;
+        renderTable();
+      });
+    });
+
+    document.getElementById('searchInput').addEventListener('input', renderTable);
+
+    // Exportar CSV
+    document.getElementById('btnExport').addEventListener('click', () => {
+      const headers = ['Status', 'Cod Promocao', 'Grupo', 'NCE', 'Descricao', 'Data Inicial', 'Data Final', 'Qt Saldo', 'Preco Anterior', 'Preco Atual', 'Diferenca'];
+      const rows = comparisonResults.map(r => [
+        r.status,
+        r.codPromocao,
+        r.grupo,
+        r.nce,
+        `"${r.descricao}"`,
+        r.dataInicial,
+        r.dataFinal,
+        `"${r.saldo}"`,
+        r.oldPrice !== null ? r.oldPrice.toFixed(2).replace('.', ',') : '',
+        r.promocao.toFixed(2).replace('.', ','),
+        r.oldPrice !== null ? r.diff.toFixed(2).replace('.', ',') : ''
+      ]);
+
+      const csvContent = "\uFEFF" + [headers.join(';'), ...rows.map(e => e.join(';'))].join('\n');
+      const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `relatorio_alteracoes_${new Date().toISOString().slice(0,10)}.csv`;
+      a.click();
+    });
+
+    // Gerar PDF de Alterações
+    document.getElementById('btnPdf').addEventListener('click', () => {
+      const alteredItems = comparisonResults.filter(i => i.status !== 'IGUAL');
+
+      const bodyRows = [
+        [
+          { text: 'N.C.E', style: 'tableHeader' },
+          { text: 'Descrição do Produto', style: 'tableHeader' },
+          { text: 'Saldo', style: 'tableHeader' },
+          { text: 'Antigo', style: 'tableHeader' },
+          { text: 'Atual', style: 'tableHeader' },
+          { text: 'Status / Dif', style: 'tableHeader' }
+        ]
+      ];
+
+      alteredItems.forEach(item => {
+        let statusText = 'NOVO';
+        let color = '#1e40af';
+        if (item.status === 'BARATO') {
+          statusText = `↓ ${formatCurrency(item.diff)}`;
+          color = '#166534';
+        } else if (item.status === 'CARO') {
+          statusText = `↑ +${formatCurrency(item.diff)}`;
+          color = '#991b1b';
+        }
+
+        bodyRows.push([
+          { text: item.nce, fontSize: 9, bold: true },
+          { text: item.descricao, fontSize: 9 },
+          { text: item.saldo, fontSize: 9, alignment: 'center' },
+          { text: formatCurrency(item.oldPrice), fontSize: 9 },
+          { text: formatCurrency(item.promocao), fontSize: 9, bold: true },
+          { text: statusText, fontSize: 9, bold: true, color: color }
+        ]);
+      });
+
+      const docDefinition = {
+        pageOrientation: 'landscape',
+        pageSize: 'A4',
+        content: [
+          { text: 'Relatório de Alterações de Preços (Promoções)', fontSize: 16, bold: true, margin: [0, 0, 0, 5] },
+          { text: `Gerado em: ${new Date().toLocaleDateString('pt-BR')} | Total de itens alterados: ${alteredItems.length}`, fontSize: 10, color: '#64748b', margin: [0, 0, 0, 15] },
+          {
+            table: {
+              headerRows: 1,
+              widths: [55, '*', 45, 65, 65, 80],
+              body: bodyRows
+            },
+            layout: 'lightHorizontalLines'
+          }
+        ],
+        styles: {
+          tableHeader: { bold: true, fontSize: 10, fillColor: '#f1f5f9', color: '#334155' }
+        }
+      };
+
+      pdfMake.createPdf(docDefinition).download(`relatorio_alteracoes_${new Date().toISOString().slice(0,10)}.pdf`);
+    });
+
+    if ('serviceWorker' in navigator) {
+      navigator.serviceWorker.register('./sw.js');
+    }
+  </script>
+</body>
+</html>
